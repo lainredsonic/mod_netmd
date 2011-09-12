@@ -14,8 +14,10 @@
 #define IOCTL_NETMD_DISC _IO(TEST_MAGIC, 5)
 #define IOCTL_NETMD_GROUP _IO(TEST_MAGIC, 6)
 #define IOCTL_NETMD_TRAK _IO(TEST_MAGIC, 7)
-#define IOCTL_NETMD_DISC_TITLE _IO(TEST_MAGIC, 8)
-#define	IOCTL_NETMD_GROUP_TITLE _IO(TEST_MAGIC, 9)
+//#define IOCTL_NETMD_DISC_TITLE _IO(TEST_MAGIC, 8)
+//#define	IOCTL_NETMD_GROUP_TITLE _IO(TEST_MAGIC, 9)
+#define IOCTL_NETMD_POS _IO(TEST_MAGIC,10)
+#define IOCTL_NETMD_SET_TIE _IO(TEST_MAGIC,11)
 
 /*typedef struct netmd_prop{
 	unsigned char hex;
@@ -91,6 +93,8 @@ int main(int argc,char *argv[])
 	struct netmd_tracks *c_netmd_tracks;
 	struct netmd_groups *c_netmd_groups;
 	struct netmd_disc *c_netmd_disc;
+	struct pos_time *cur_pos=malloc(sizeof(struct pos_time));
+	struct netmd_tracks *mod_track;
 
 	if(argc==1){
 		printf("please inter command\n");
@@ -123,6 +127,12 @@ int main(int argc,char *argv[])
 				break;
 			}
 			printf("track no. :%d\n",*track+1);
+			if (ioctl(fd,IOCTL_NETMD_POS,cur_pos) == -1){
+				perror("ioctl IOCTL_NETMD_POS");
+				break;
+			}
+			printf("track pos:%d:%d:%d\n",cur_pos->min,cur_pos->sec,cur_pos->ten);
+			
 		break;
 		case 'i':
 			if (ioctl(fd,IOCTL_NETMD_INFO,rawheader) == -1){
@@ -134,39 +144,71 @@ int main(int argc,char *argv[])
 		case 'd':
 //////////////////////////////////////////////////////////////////////////
 			c_netmd_disc=malloc(sizeof(struct netmd_disc));
+			c_netmd_disc->disc_title=malloc(255);
 			if (ioctl(fd,IOCTL_NETMD_DISC,c_netmd_disc) == -1){
 				perror("ioctl IOCTL_NETMD_DISC");
 				break;
 			}
-			c_netmd_disc->disc_title=malloc(255);
-			if (ioctl(fd,IOCTL_NETMD_DISC_TITLE,c_netmd_disc->disc_title)==-1){
+			/*if (ioctl(fd,IOCTL_NETMD_DISC_TITLE,c_netmd_disc->disc_title)==-1){
 				perror("ioctl IOCTL_NETMD_DISC_TITLE");
 			}
+			*/
 			printf("disc_title:%s\n",c_netmd_disc->disc_title);
+			printf("total groups:%d\n",c_netmd_disc->group_count);
+			printf("total tracks:%d\n",c_netmd_disc->track_count);
 //////////////////////////////////////////////////////////////////////////
 			c_netmd_groups=malloc(sizeof(struct netmd_groups)*(c_netmd_disc->group_count));
-			if (ioctl(fd,IOCTL_NETMD_GROUP,c_netmd_groups)==-1){
-				perror("ioctl IOCTL_NETMD_DISC_GROUP");
-			}
-			c_netmd_disc->netmd_groups=c_netmd_groups;
+			c_netmd_tracks=malloc(sizeof(struct netmd_tracks)*(c_netmd_disc->track_count));
 			for(i=0;i<c_netmd_disc->group_count;i++){
 				(c_netmd_groups+i)->group_title=malloc(255);
-				total_tracks+=(c_netmd_disc->netmd_groups+i)->end_track-(c_netmd_disc->netmd_groups+i)->start_track+1;
-				printf("disc_group_index:%d,start_track:%d,end_track:%d\n",i,(c_netmd_disc->netmd_groups+i)->start_track,(c_netmd_disc->netmd_groups+i)->end_track);
 			}
-			if(ioctl(fd,IOCTL_NETMD_GROUP_TITLE,c_netmd_groups)==-1){
+			for(i=0;i<c_netmd_disc->track_count;i++){
+				(c_netmd_tracks+i)->tname=malloc(255);	
+				(c_netmd_tracks+i)->codec=malloc(10);
+				(c_netmd_tracks+i)->bitrate=malloc(10);
+			}
+			if (ioctl(fd,IOCTL_NETMD_GROUP,c_netmd_groups)==-1){
+				perror("ioctl IOCTL_NETMD_DISC_GROUP");
+				break;
+			}
+			c_netmd_disc->netmd_groups=c_netmd_groups;
+			c_netmd_disc->netmd_tracks=c_netmd_tracks;
+			for(i=0;i<c_netmd_disc->group_count;i++){
+				//(c_netmd_groups+i)->group_title=malloc(255);
+			//	total_tracks+=(c_netmd_disc->netmd_groups+i)->end_track-(c_netmd_disc->netmd_groups+i)->start_track+1;
+				printf("disc_group_index:%d\tgroup_title:%s\tstart_track:%d\tend_track:%d\n",i,(c_netmd_disc->netmd_groups+i)->group_title,(c_netmd_disc->netmd_groups+i)->start_track,(c_netmd_disc->netmd_groups+i)->end_track);
+			}
+			/*if(ioctl(fd,IOCTL_NETMD_GROUP_TITLE,c_netmd_groups)==-1){
 				perror("ioctl IOCTL_NETMD_GROUP_TITLE");
 			}
 			for(i=0;i<c_netmd_disc->group_count;i++){
 				printf("disc_group_index:%d,group_title:%s\n",i,(c_netmd_disc->netmd_groups+i)->group_title);
 			}
-			printf("total tracks:%d\n",total_tracks);
+			*/
 ///////////////////////////////////////////////////////////////////////////
-			c_netmd_tracks=malloc(sizeof(struct netmd_tracks)*total_tracks);
-		/*	if (ioctl(fd,IOCTL_NETMD_GROUP,c_netmd_tracks)==-1){
+			if (ioctl(fd,IOCTL_NETMD_TRAK,c_netmd_tracks)==-1){
 				perror("ioctl IOCTL_NETMD_TRAK");
+				break;
 			}
-		*/
+			for(i=0;i<c_netmd_disc->track_count;i++){
+				printf("disc_track_index:%d\ttrack_title:%s\ttrack_codec:%s\ttrack_bitrate:%s\t%d:%d:%d\n",i,(c_netmd_disc->netmd_tracks+i)->tname,(c_netmd_disc->netmd_tracks+i)->codec,(c_netmd_disc->netmd_tracks+i)->bitrate,(c_netmd_disc->netmd_tracks+i)->minute,(c_netmd_disc->netmd_tracks+i)->second,(c_netmd_disc->netmd_tracks+i)->tenth);
+			}
+		break;
+		case 't':
+			if(argv[2]&&argv[3]){
+			mod_track=malloc(sizeof(struct netmd_tracks));
+			mod_track->index=atoi(argv[2]);
+			mod_track->tname=strdup(argv[3]);
+			if(ioctl(fd,IOCTL_NETMD_SET_TIE,mod_track)==-1){		
+				perror("ioctl IOCTL_NETMD_SET_TIE");
+				printf("Write new title error\n");
+				break;
+			}else{
+				printf("Write new title success\n");
+			}
+			free(mod_track);
+			}
+			
 		break;
 /*		case 'w':
 			

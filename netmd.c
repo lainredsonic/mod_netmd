@@ -355,11 +355,21 @@ static int netmd_flush(struct file *file,fl_owner_t id){
 
 
 static long netmd_ioctl(struct file *file,unsigned int cmd,unsigned long arg){	
+	char begintitle[] = {0x00, 0x18, 0x08, 0x10, 0x18, 0x02, 0x03, 0x00}; /* Some unknown command being send before titling */
+//	char begintitle[] = {0x00, 0x18, 0x08, 0x10, 0x18, 0x03, 0x03, 0x00}; /* Some unknown command being send before titling */
+	
+	char endrecord[] =  {0x00, 0x18, 0x08, 0x10, 0x18, 0x02, 0x00, 0x00};  /* Some unknown command being send after titling */
+//	char endrecord[] =  {0x00, 0x18, 0x08, 0x10, 0x18, 0x03, 0x00, 0x00};  /* Some unknown command being send after titling */
+	char fintoc[] =     {0x00, 0x18, 0x00, 0x08, 0x00, 0x46, 0xf0, 0x03, 0x01, 0x03, 0x48, 0xff, 0x00, 0x10, 0x01, 0x00, 0x25, 0x8f, 0xbf, 0x09, 0xa2, 0x2f, 0x35, 0xa3,0xdd}; /* Command to finish toc flashing */
 	int i;
+	char size_request[4];
 	struct netmd_device *mdev;
-	char *buf=kmalloc(255,GFP_KERNEL);
-	char *track=kmalloc(sizeof(char),GFP_KERNEL);
-	char *p=kmalloc(255,GFP_KERNEL);
+	char *buf;
+	char *track;
+	char *p=NULL;
+	char *fp[99];
+	char *fp1[99];
+	char *fp2[99];
 	int group_index=0;
 	int track_index=0;
 	mdev=file->private_data;
@@ -369,19 +379,25 @@ static long netmd_ioctl(struct file *file,unsigned int cmd,unsigned long arg){
 	}
 	if (cmd==_IO('k',1)){
 		if(arg){
+			track=kmalloc(sizeof(char),GFP_KERNEL);
 			if(copy_from_user(track,(void *)arg,1))
 				return -EFAULT;
 			printk(KERN_INFO "set track:%d\n",*track);
 			netmd_set_track(mdev,*track);
+			kfree(track);
 		}
 		netmd_playback_control(mdev,0x75);
 		printk(KERN_INFO "netmd play\n");
 	}
 	if(cmd==_IO('k',2)){
+		track=kmalloc(sizeof(char),GFP_KERNEL);
 		*track=netmd_get_current_track(mdev);
 		dev_info(&mdev->udev->dev,"current track:%d",*track);
-		if(copy_to_user((void *)arg,track,1))
+		if(copy_to_user((void *)arg,track,1)){
+			kfree(track);
 			return -EFAULT;
+		}
+		kfree(track);
 	}
 /*	if (cmd==_IO('k',3)){
 		if(!arg)
@@ -390,31 +406,69 @@ static long netmd_ioctl(struct file *file,unsigned int cmd,unsigned long arg){
 */
 	if (cmd==_IO('k',4)){
 		if(arg){
+			buf=kmalloc(255,GFP_KERNEL);
 			request_disc_rawheader(mdev,buf,255);	
 			//if(copy_to_user((void *)arg,mdev->netmd_disc_info,sizeof(mdev->netmd_disc_info)))
-			if(copy_to_user((void *)arg,buf,255))
+			if(copy_to_user((void *)arg,buf,255)){
+				kfree(buf);
 				return -EFAULT;
+			}
+			kfree(buf);
 		}
 	}
 	if (cmd==_IO('k',5)){  //get netmd_disc
 		if(arg){
+			p=((struct netmd_disc*)arg)->disc_title;
 			if(copy_to_user((struct netmd_disc*)arg,mdev->netmd_disc_info,sizeof(struct netmd_disc)))
 				return -EFAULT;
+			((struct netmd_disc *)arg)->disc_title=p;
+			if(copy_to_user(((struct netmd_disc *)arg)->disc_title,mdev->netmd_disc_info->disc_title,255))
+			//if(copy_to_user(p,mdev->netmd_disc_info->disc_title,255))
+				return -EFAULT;
+			p=NULL;
 		}
 	}
 	if (cmd==_IO('k',6)){ //get netmd_groups
 		if(arg){
+			for(i=0;i<mdev->netmd_disc_info->group_count;i++){
+				fp[i]=((struct netmd_groups*)arg+i)->group_title;
+			}
 			if(copy_to_user((struct netmd_groups*)arg,mdev->netmd_disc_info->netmd_groups,sizeof(struct netmd_groups)*(mdev->netmd_disc_info->group_count)))
 				return -EFAULT;
+			for(i=0;i<mdev->netmd_disc_info->group_count;i++){
+				((struct netmd_groups *)arg+i)->group_title=fp[i];
+				//if(copy_to_user(((struct netmd_groups *)arg+i)->group_title,(mdev->netmd_disc_info->netmd_groups+i)->group_title,255))
+				if(copy_to_user(fp[i],(mdev->netmd_disc_info->netmd_groups+i)->group_title,255))
+					return -EFAULT;
+				fp[i]=NULL;
+			}
 		}
 	}
 	if (cmd==_IO('k',7)){ //get netmd_track
 		if(arg){
-		//	for(group_index=0;group_index<mdev->netmd_disc_info->group_count;group_index++)
-		//	if(copy_to_user((struct netmd_tracks*)arg,(mdev->netmd_disc_info->netmd_groups+group_index)))
+			for(track_index=0;track_index<mdev->netmd_disc_info->track_count;track_index++){
+				fp[track_index]=((struct netmd_tracks*)arg+track_index)->tname;
+				fp1[track_index]=((struct netmd_tracks*)arg+track_index)->codec;
+				fp2[track_index]=((struct netmd_tracks*)arg+track_index)->bitrate;
+				
+				//printk(KERN_INFO "debug I/O:track name:%s",(mdev->netmd_disc_info->netmd_tracks+track_index)->tname);
+			}
+			if(copy_to_user((struct netmd_tracks*)arg,mdev->netmd_disc_info->netmd_tracks,sizeof(struct netmd_tracks)*(mdev->netmd_disc_info->track_count)))
+				return -EFAULT;
+			for(track_index=0;track_index<mdev->netmd_disc_info->track_count;track_index++){
+				((struct netmd_tracks *)arg+track_index)->tname=fp[track_index];
+				((struct netmd_tracks *)arg+track_index)->codec=fp1[track_index];
+				((struct netmd_tracks *)arg+track_index)->bitrate=fp2[track_index];
+				if(copy_to_user(((struct netmd_tracks*)arg+track_index)->tname,(mdev->netmd_disc_info->netmd_tracks+track_index)->tname,255))
+					return -EFAULT;
+				if(copy_to_user(((struct netmd_tracks*)arg+track_index)->codec,(mdev->netmd_disc_info->netmd_tracks+track_index)->codec,255))
+					return -EFAULT;
+				if(copy_to_user(((struct netmd_tracks*)arg+track_index)->bitrate,(mdev->netmd_disc_info->netmd_tracks+track_index)->bitrate,255))
+					return -EFAULT;
+			}
 		}
 	}
-	if (cmd==_IO('k',8)){ //get netmd_disc->disc_title
+	if (cmd==_IO('k',8)){ //get netmd_disc->disc_title >>>> no used!
 		if(arg){
 			if(copy_to_user((char *)arg,mdev->netmd_disc_info->disc_title,255))
 				return -EFAULT;
@@ -427,6 +481,40 @@ static long netmd_ioctl(struct file *file,unsigned int cmd,unsigned long arg){
 					return -EFAULT;
 			//dev_info(&mdev->udev->dev,"[debug]group name:%s",arg+8+i*sizeof(struct netmd_groups));
 			}
+		}
+	}
+	if (cmd==_IO('k',10)){
+		if(arg){
+			if(copy_to_user((struct pos_time*)arg,netmd_get_playback_position(mdev),sizeof(struct pos_time)))
+				return -EFAULT;
+			
+		}
+	}
+	if (cmd==_IO('k',11)){
+		if(arg){
+			buf=kmalloc(30,GFP_KERNEL);
+			if(copy_from_user(buf,((struct netmd_tracks*)arg)->tname,30)){	
+					kfree(buf);
+					return -EFAULT;
+			}
+			if(copy_from_user(&track_index,&(((struct netmd_tracks*)arg)->index),1)){
+					kfree(buf);
+					return -EFAULT;
+			}
+			sedcmd(mdev,(unsigned char *)begintitle,8,NULL,0);
+			dev_info(&mdev->udev->dev,"[debug]mod track:%d,title:%s",track_index,buf);
+			if(netmd_set_title(mdev,track_index,buf,30)==-1){
+					kfree(buf);
+					return -EFAULT;
+			}
+			sedcmd(mdev,(unsigned char *)endrecord,8,NULL,0);
+			i=usb_control_msg(mdev->udev,usb_sndctrlpipe(mdev->udev,0x0),0x80,0x41,0,0,fintoc,0x19,800);
+        		dev_info(&mdev->udev->dev,"waiting for toc done :");
+        		/*do{
+                		usb_control_msg(mdev->udev,usb_rcvctrlpipe(mdev->udev,0x0),0x01,0xc1,0,0,size_request,0x04,5000);
+        		}while(memcmp(size_request,"\0\0\0\0",4)==0);
+			*/
+        		return i;
 		}
 	}
 	return 0;
@@ -514,21 +602,25 @@ char* find_pair(int hex,struct netmd_pair const* array){
 	return unknow_pair.t_name;
 }
 
-static void set_track_data(struct netmd_device *mdev,struct netmd_tracks *netmd_tracks){
+//static void set_track_data(struct netmd_device *mdev,struct netmd_tracks *netmd_tracks){
+static void set_track_data(struct netmd_device *mdev){
 	int track_index;
 	int title_size=1;
+	struct netmd_tracks *netmd_tracks=mdev->netmd_disc_info->netmd_tracks;
 	unsigned char codec_id,bitrate_id;
 	//for(track_index=0;track_index<mdev->netmd_disc_info->track_count;track_index++){
 	for(track_index=0;title_size>=0;track_index++){
 		(netmd_tracks+track_index)->tname=kmalloc(255,GFP_KERNEL);
 		title_size=netmd_request_track_title(mdev,track_index,(netmd_tracks+track_index)->tname,255);
 		if(title_size>=0){
+			(netmd_tracks+track_index)->index=track_index;
 			netmd_request_track_codec(mdev,track_index,(unsigned char*)&codec_id);
 			netmd_request_track_bitrate(mdev,track_index,(unsigned char*)&bitrate_id);
 			(netmd_tracks+track_index)->codec=find_pair(codec_id,codecs);
 			(netmd_tracks+track_index)->bitrate=find_pair(bitrate_id,bitrates);
 			mdev->netmd_disc_info->track_count=track_index+1;
-			dev_info(&mdev->udev->dev,"[debug]track title:%s\tcodec:%s\tbitrate:%s",(netmd_tracks+track_index)->tname,(netmd_tracks+track_index)->codec,(netmd_tracks+track_index)->bitrate);
+			netmd_request_track_time(mdev,track_index,netmd_tracks+track_index);
+			dev_info(&mdev->udev->dev,"[debug]track index:%d\ttrack title:%s\tcodec:%s\tbitrate:%s",(netmd_tracks+track_index)->index,(netmd_tracks+track_index)->tname,(netmd_tracks+track_index)->codec,(netmd_tracks+track_index)->bitrate);
 		}
 	}
 }
@@ -541,7 +633,7 @@ static void format_disc_info(struct netmd_device *mdev,char *disc_rawheader){
 		int track;
 		char *semicolon,*hyphen,*name;
 		int start,end;
-		struct netmd_tracks *netmd_tracks;
+		//struct netmd_tracks *netmd_tracks;
 
 		if(rawh_size!=0){
 			tok=disc_rawheader;
@@ -560,6 +652,8 @@ static void format_disc_info(struct netmd_device *mdev,char *disc_rawheader){
 		mdev->netmd_disc_info->group_count=group_count;
 		mdev->netmd_disc_info->netmd_groups=kmalloc(sizeof(struct netmd_groups)*(mdev->netmd_disc_info->group_count),GFP_KERNEL);
 		memset(mdev->netmd_disc_info->netmd_groups,0,sizeof(struct netmd_groups)*(mdev->netmd_disc_info->group_count));
+		mdev->netmd_disc_info->netmd_tracks=kmalloc(sizeof(struct netmd_tracks)*99,GFP_KERNEL);
+		memset(mdev->netmd_disc_info->netmd_tracks,0,sizeof(struct netmd_tracks)*99);
 		group_count=0;
 ////////////////////////////////////////////////////////////////////////////////////////////////
 		if(mdev->netmd_disc_info->disc_header_len){
@@ -623,8 +717,10 @@ static void format_disc_info(struct netmd_device *mdev,char *disc_rawheader){
 				next_tok=strstr(tok,"//");
 			}
 		//mdev->netmd_disc_info->track_count--; //except group 0 track
-		netmd_tracks=kmalloc(sizeof(struct netmd_tracks)*99,GFP_KERNEL);
-		set_track_data(mdev,netmd_tracks);
+		//netmd_tracks=kmalloc(sizeof(struct netmd_tracks)*99,GFP_KERNEL);
+		//set_track_data(mdev,netmd_tracks);
+		set_track_data(mdev);
+		//mdev->netmd_disc_info->netmd_tracks=netmd_tracks;
 		dev_info(&mdev->udev->dev,"total tracks:%d",mdev->netmd_disc_info->track_count);
 		
 		}
@@ -658,23 +754,25 @@ int netmd_request_track_time(struct netmd_device *mdev,int track,struct netmd_tr
 	netmd_track->minute=BCD_TO_PROPER(time_request[28]);
 	netmd_track->second=BCD_TO_PROPER(time_request[29]);
 	netmd_track->tenth=BCD_TO_PROPER(time_request[30]);
-	netmd_track->index=track;
+	//netmd_track->index=track;
 	return ret;
 }
 
-int * netmd_get_playback_position(struct netmd_device *mdev){
+struct pos_time * netmd_get_playback_position(struct netmd_device *mdev){
 	int ret=0;
+	struct pos_time *cur_pos=kmalloc(sizeof(struct pos_time),GFP_KERNEL);
 	char request[] = {0x00, 0x18, 0x09, 0x80, 0x01, 0x04, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30, 0x00, 0x03, 0x00, 0x30, 0x00, 0x02, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00};
 	int position[3]={0,0,0};
 	char buf[255];
 	ret=netmd_exch_message(mdev,request,28,buf);
-	position[0]=BCD_TO_PROPER(buf[38]);
-	position[1]=BCD_TO_PROPER(buf[39]);
-	position[2]=BCD_TO_PROPER(buf[40]);
-	if(position[0]||position[1]||position[2])
-		return position;
-	else
-		return 0;
+	cur_pos->min=position[0]=BCD_TO_PROPER(buf[38]);
+	cur_pos->sec=position[1]=BCD_TO_PROPER(buf[39]);
+	cur_pos->ten=position[2]=BCD_TO_PROPER(buf[40]);
+	dev_info(&mdev->udev->dev,"cur_time:%d:%d:%d",position[0],position[1],position[2]);
+//	if(position[0]||position[1]||position[2])
+		return cur_pos;
+//	else
+//		return 0;
 }
 
 int netmd_request_track_codec(struct netmd_device *mdev,int track,unsigned char *codec_id ){
@@ -769,7 +867,8 @@ static  int request_disc_rawheader(struct netmd_device *mdev,char *buffer,int si
 static int netmd_set_title(struct netmd_device *mdev,int track,char *buffer,int size){
 	int ret=1;
 	char *title_request=NULL;
-	char title_header[21]={0x00,0x18,0x07,0x02,0x20,0x18,0x02,0x00,0x00,0x30,0x00,0x0a,0x50,0x00,0x00,0x0a,0x00,0x00,0x00,0x0d};
+	char title_header[21]={0x00,0x18,0x07,0x02,0x20,0x18,0x02,0x00,0x00,0x30,0x00,0x0a,0x00,0x50,0x00,0x00,0x0a,0x00,0x00,0x00,0x0d};
+//	char title_header[21]={0x00,0x18,0x07,0x02,0x20,0x18,0x03,0x00,0x00,0x30,0x00,0x0a,0x00,0x50,0x00,0x00,0x0a,0x00,0x00,0x00,0x0d};
 	char reply[255];
 	title_request=kmalloc(sizeof(char)*(0x15+size),GFP_KERNEL);
 	memcpy(title_request,title_header,0x15);
@@ -780,7 +879,8 @@ static int netmd_set_title(struct netmd_device *mdev,int track,char *buffer,int 
 	if(ret<0)
 	{
 		dev_info(&mdev->udev->dev,"netmd_set_title:bad ret code");
-		return 0;
+		kfree(title_request);
+		return -1;
 	}
 	kfree(title_request);
 	return 1;
@@ -850,6 +950,27 @@ static int netmd_playback_control(struct netmd_device *mdev,unsigned char contro
 	}
 	return 1;
 }
+
+/*int netmd_set_title(struct netmd_device *mdev,int track,char *buffer,int size){
+	int ret=1;
+	unsigned char *title_request=NULL;
+	char title_header[21]={0x00, 0x18, 0x07, 0x02, 0x20, 0x18, 0x02, 0x00, 0x00, 0x30, 0x00, 0x0a, 0x00, 0x50, 0x00, 0x00,0x0a, 0x00, 0x00, 0x00, 0x0d};
+	unsigned char reply[255];
+	title_request=kmalloc(sizeof(char)*(0x15+size));
+	memcpy(title_request,title_header,0x15);
+	memcpy(title_request+0x15,buffer,size);
+	title_request[8]=track;
+	title_request[16]=size;
+	title_request[20]=size;
+	ret=netmd_exch_message(mdev,title_request,(int)(0x15+size),reply);
+	if(ret<0){
+		dev_info(&mdev->udev->dev,"bad ret code, returning early\n");
+		return 0;
+	}
+	kfree(title_request);
+	return 1;
+}
+*/
 
 static void netmd_device_info(struct netmd_device *mdev){
 	dev_info(&mdev->udev->dev,"product:%s,manufacturer:%s,serial:%s",mdev->udev->product,mdev->udev->manufacturer,mdev->udev->serial);

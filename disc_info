@@ -1,0 +1,15 @@
+Dekernel:~/ldd3/usb/netmd-2011-05-31 # ./test_ioc.bin d
+cmd :d
+disc_title:fsdfsdfdsfadsf
+total groups:2
+total tracks:8
+disc_group_index:0      group_title:fsdfsdfdsfadsf      start_track:0   end_track:0
+disc_group_index:1      group_title:test        start_track:1   end_track:10
+disc_track_index:0      track_title:    track_codec:ATRAC       track_bitrate:Stereo    4:38:2
+disc_track_index:1      track_title:bb  track_codec:ATRAC       track_bitrate:Stereo    4:43:66
+disc_track_index:2      track_title:???3        track_codec:ATRAC       track_bitrate:Stereo    4:30:75
+disc_track_index:3      track_title:???4        track_codec:ATRAC       track_bitrate:Stereo    5:27:27
+disc_track_index:4      track_title:    track_codec:ATRAC       track_bitrate:Stereo    5:52:8
+disc_track_index:5      track_title:<untitled>  track_codec:ATRAC       track_bitrate:Stereo    5:15:38
+disc_track_index:6      track_title:<untitled>  track_codec:ATRAC       track_bitrate:Stereo    4:30:20      
+disc_track_index:7      track_title:<untitled>  track_codec:ATRAC       track_bitrate:Stereo    4:49:11 
